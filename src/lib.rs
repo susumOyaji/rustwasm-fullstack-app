@@ -1,6 +1,10 @@
 use worker::*;
 use serde_json::json;
-use scraper::{Html, Selector}; // ★追加！HTMLパースに必要
+use scraper::{Html, Selector,ElementRef}; // ★追加！HTMLパースに必要
+use web_sys::console; // これを追加
+use wasm_bindgen::JsValue; // これも追加
+
+
 
 #[event(fetch)]
 async fn fetch(_req: Request, _env: Env, _ctx: Context) -> Result<Response> {
@@ -30,53 +34,65 @@ async fn fetch(_req: Request, _env: Env, _ctx: Context) -> Result<Response> {
 
     // 企業コード (例: 6758.T) と企業名 (例: ソニーグループ)
     // <h1 class="sc-6s03j6-0 gCgsFq">ソニーグループ (6758.T)</h1> のような構造を想定
-    let title_selector = Selector::parse("h2.PriceBoardMain__name__6uDh").unwrap();
-    let code_selector = Selector::parse("span.PriceBoardMain__code__2wso").unwrap();
-    if let Some(element) = document.select(&code_selector).next() {
-        let text = element.text().collect::<Vec<_>>().join(" ").trim().to_string();
-        // "ソニーグループ (6758.T)" から抽出
-        if let Some(start) = text.find('(') {
-            if let Some(end) = text.find(')') {
-                company_code = text[..start].trim().to_string();
-                company_name = text[start + 1..end].trim().to_string();
-            }
-        } else {
-            // カッコがない場合、全体を企業名とみなす
-            company_name = text;
-        }
+    let name_selector = Selector::parse("h2.PriceBoardMain__name__6uDh").unwrap();
+    if let Some(element) = document.select(&name_selector).next() {
+        company_name = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }
 
+    let code_selector = Selector::parse("span.PriceBoardMain__code__2wso").unwrap();
+    if let Some(element) = document.select(&code_selector).next() {
+        company_code = element.text().collect::<Vec<_>>().join("").trim().to_string();
+    }
+    
+   
 
     // 現在の株価 (例: 14,000.5)
     // <dd class="sc-6s03j6-0 fHlKcj" data-test-id="currentPrice">14,000.5</dd> のような構造を想定
-    let price_selector = Selector::parse("[data-test-id='currentPrice']").unwrap();
+    let price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
     if let Some(element) = document.select(&price_selector).next() {
         current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }
 
-    // 前日比の金額とパーセンテージ
-    // <dd class="sc-6s03j6-0 bLwA-Dg" data-test-id="priceDiff">
-    //   <span class="sc-1g400y-0 fKqTjt">+</span>150.0
-    //   <span class="sc-1g400y-0 fKqTjt">(</span><span class="sc-1g400y-0 fKqTjt">+</span>1.08<span class="sc-1g400y-0 fKqTjt">%)</span>
-    // </dd> のような構造を想定
-    let diff_selector = Selector::parse("[data-test-id='priceDiff']").unwrap();
-    if let Some(element) = document.select(&diff_selector).next() {
-        let full_text = element.text().collect::<Vec<_>>().join("").trim().to_string();
-        // 例: "+150.0(+1.08%)" の形式から抽出
-        if let Some(start_percent) = full_text.find('(') {
-            change_amount = full_text[..start_percent].trim().to_string();
-            if let Some(end_percent) = full_text.find(')') {
-                change_percentage = full_text[start_percent + 1..end_percent].trim().to_string();
-            }
-        } else {
-            // %表記がない場合、金額のみ取得
-            change_amount = full_text;
-        }
+
+
+
+
+
+ let selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
+
+    let mut values = document
+        .select(&selector)
+        .filter_map(|el| el.text().next())
+        .collect::<Vec<_>>();
+    
+    for (i, value) in values.iter().enumerate() {
+    console::log_1(&JsValue::from_str(&format!("値 {}: {}", i, value)));
     }
+
+
+   
+
+    if values.len() >= 3 {
+    //current_price = values[0].trim().to_string();
+    change_amount = values[1].trim().to_string();
+    change_percentage = values[2].trim().to_string();
+
+    console::log_1(&JsValue::from_str(&format!("現在価格: {}", current_price)));
+    console::log_1(&JsValue::from_str(&format!("前日比: {}", change_amount)));
+    console::log_1(&JsValue::from_str(&format!("変動率: {}%", change_percentage)));
+} else {
+    console::log_1(&JsValue::from_str("値が不足しています。"));
+}
+
+
+
+ 
+ 
+
 
     // 更新日時 (例: 2025/06/17 10:00)
     // <time class="sc-6s03j6-0 fHlKcj" data-test-id="stockTime">2025/06/17 10:00</time> のような構造を想定
-    let time_selector = Selector::parse("[data-test-id='stockTime']").unwrap();
+    let time_selector = Selector::parse("#root > main > div > section > div.PriceBoardMain__1nb3 > div.PriceBoardMain__priceInformation__3YfB > div.PriceBoardMain__supplementBottom__380e > ul > li:nth-child(2)").unwrap();
     if let Some(element) = document.select(&time_selector).next() {
         update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }

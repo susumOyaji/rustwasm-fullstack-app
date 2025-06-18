@@ -791,6 +791,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "web-sys",
  "worker",
  "worker-macros",
 ]

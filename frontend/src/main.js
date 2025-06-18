@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
         messageSpan.textContent = '取得中...';
         timestampSpan.textContent = '取得中...';
         locationSpan.textContent = '取得中...';
+        codeSpan.textContent = '取得中...';
 
         try {
             // WorkerのAPIエンドポイントにフェッチリクエストを送信
@@ -31,9 +32,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
 
             // 取得したデータをHTML要素に表示
-            messageSpan.textContent = data.message || 'データなし';
-            timestampSpan.textContent = data.timestamp || 'データなし';
+            messageSpan.textContent = data.status || 'データなし';
+            timestampSpan.textContent = data.update_time || 'データなし';
             locationSpan.textContent = data.location || 'データなし';
+            codeSpan.textContent = data.status || 'データなし';
+            nameSpan.textContent = data.update_time || 'データなし';
+            priceSpan.textContent = data.location || 'データなし';
 
         } catch (error) {
             // エラーが発生した場合、コンソールと画面に表示

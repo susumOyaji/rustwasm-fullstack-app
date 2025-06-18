@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Worker APIからのデータ表示</title>
-    <link rel="stylesheet" href="../src/style.css">
+    <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
     <div class="container">
@@ -17,11 +17,15 @@
             <h2>取得データ:</h2>
             <p>メッセージ: <span id="message"></span></p>
             <p>タイムスタンプ: <span id="timestamp"></span></p>
-            <p>場所: <span id="location"></span></p>
-            <p>エラー: <span id="error-message" style="color: red;"></span></p>
+            <p>Code: <span id="location"></span></p>
+            <p>Name: <span id="name"></span></p>
+            <p>Price: <span id="current_price" style="color: red;"></span></p>
+            <p>Compared to the previous day: <span id="change_amount"></span></p>
+            <p>Percent: <span id="change_percentage"></span></p>
+           
         </div>
     </div>
 
-    <script src="../src/main.js"></script>
+    <script src="/src/main.js"></script>
 </body>
 </html>
