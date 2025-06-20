@@ -1,14 +1,13 @@
-# -----------------------------------------------
-# ⭐️ Workers のための設定 (例: worker/wrangler.toml またはルートのワーカーセクション)
-# -----------------------------------------------
-name = "rustwasm-fullstack-app"
-main = "build/worker/shim.mjs"
-compatibility_date = "2025-06-16"
-# # もし、他のWorker設定があればここに続く...
-# [vars]
-# SOME_VAR = "value"
+# rustwasm-fullstack-app/wrangler.toml (Pages専用)
 
-[build]
-command = "cargo install -q worker-build && worker-build --release"
+name = "my-stock-frontend-pages"
 
+#[pages]
+# ビルド出力ディレクトリへのパスを指定
+pages_build_output_dir = "./frontend/public" # ⭐️ ビルド後のHTMLがあるディレクトリを指定 (例)
 
+# Pagesのビルド設定
+#[pages.build]
+# PagesがGitHubからリポジトリをクローンした後、まずfrontendディレクトリに移動
+#command = "npm install && npm run build" # frontend/package.jsonがあるなら
+#cwd = "frontend" # commandを実行するディレクトリ (もし必要なら)
