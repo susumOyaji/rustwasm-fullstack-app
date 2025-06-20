@@ -13,7 +13,7 @@
             line-height: 1.6;
         }
         .container {
-            max-width: 800px;
+            max-width: 1200px; /* 全体の幅を広げる */
             margin: 30px auto;
             background-color: #fff;
             padding: 30px;
@@ -63,17 +63,54 @@
             border-top: 1px solid #eee;
             padding-top: 20px;
         }
+
+        /* --- ここから新しいCSSの追加・変更 --- */
+        #results {
+            display: flex; /* Flexboxコンテナにする */
+            flex-wrap: wrap; /* 子要素を折り返す */
+            gap: 15px; /* 子要素間の隙間 */
+            justify-content: flex-start; /* 左寄せ */
+        }
+
         .stock-card {
             background-color: #f9f9f9;
             border: 1px solid #ddd;
             border-radius: 6px;
-            padding: 15px 20px;
-            margin-bottom: 15px;
+            padding: 15px; /* 左右のパディングを少し減らしてスペースを確保 */
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            flex: 0 0 calc(20% - 12px); /* 1行に5つ表示 (20%) - gapの調整 */
+            max-width: calc(20% - 12px); /* 最大幅も設定 */
+            box-sizing: border-box; /* パディングとボーダーを幅に含める */
+            min-width: 180px; /* 小さい画面での最小幅 */
         }
+
+        /* 画面が小さい場合のレスポンシブ対応 */
+        @media (max-width: 1024px) {
+            .stock-card {
+                flex: 0 0 calc(25% - 11.25px); /* 1行に4つ */
+                max-width: calc(25% - 11.25px);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stock-card {
+                flex: 0 0 calc(33.33% - 10px); /* 1行に3つ */
+                max-width: calc(33.33% - 10px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stock-card {
+                flex: 0 0 calc(50% - 7.5px); /* 1行に2つ */
+                max-width: calc(50% - 7.5px);
+            }
+        }
+        /* --- 新しいCSSの追加・変更ここまで --- */
+
+
         .stock-card p {
             margin: 5px 0;
-            font-size: 15px;
+            font-size: 14px; /* フォントサイズを少し小さくして収まりやすくする */
         }
         .stock-card p strong {
             color: #333;
@@ -105,8 +142,8 @@
         <h1>株価情報検索</h1>
 
         <div class="input-group">
-            <label for="stockCodes">株価コード (例: 6758.T, 9984.T):</label>
-            <input type="text" id="stockCodes" value="6758.T">
+            <label for="stockCodes">株価コード (例: 6758.T, 9984.T, 7203.T, 6098.T, 4568.T):</label>
+            <input type="text" id="stockCodes" value="6758.T,9984.T,7203.T,6098.T,4568.T">
         </div>
 
         <button id="fetchDataButton">株価データを取得</button>
