@@ -1,7 +1,14 @@
+# -----------------------------------------------
+# ⭐️ Workers のための設定 (例: worker/wrangler.toml またはルートのワーカーセクション)
+# -----------------------------------------------
 name = "rustwasm-fullstack-app"
 main = "build/worker/shim.mjs"
-#pages_build_output_dir = "./frontend/public" # frontendディレクトリ内の./publicディレクトリ
 compatibility_date = "2025-06-16"
+# # もし、他のWorker設定があればここに続く...
+# [vars]
+# SOME_VAR = "value"
 
 [build]
 command = "cargo install -q worker-build && worker-build --release"
+
+
