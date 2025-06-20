@@ -64,7 +64,6 @@
             padding-top: 20px;
         }
 
-        /* --- ここから新しいCSSの追加・変更 --- */
         #results {
             display: flex; /* Flexboxコンテナにする */
             flex-wrap: wrap; /* 子要素を折り返す */
@@ -72,47 +71,45 @@
             justify-content: flex-start; /* 左寄せ */
         }
 
-        .stock-card {
+        .stock-card, .index-card { /* 両方のカードに適用 */
             background-color: #f9f9f9;
             border: 1px solid #ddd;
             border-radius: 6px;
-            padding: 15px; /* 左右のパディングを少し減らしてスペースを確保 */
+            padding: 15px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             flex: 0 0 calc(20% - 12px); /* 1行に5つ表示 (20%) - gapの調整 */
             max-width: calc(20% - 12px); /* 最大幅も設定 */
-            box-sizing: border-box; /* パディングとボーダーを幅に含める */
-            min-width: 180px; /* 小さい画面での最小幅 */
+            box-sizing: border-box;
+            min-width: 180px;
         }
 
         /* 画面が小さい場合のレスポンシブ対応 */
         @media (max-width: 1024px) {
-            .stock-card {
+            .stock-card, .index-card {
                 flex: 0 0 calc(25% - 11.25px); /* 1行に4つ */
                 max-width: calc(25% - 11.25px);
             }
         }
 
         @media (max-width: 768px) {
-            .stock-card {
+            .stock-card, .index-card {
                 flex: 0 0 calc(33.33% - 10px); /* 1行に3つ */
                 max-width: calc(33.33% - 10px);
             }
         }
 
         @media (max-width: 480px) {
-            .stock-card {
+            .stock-card, .index-card {
                 flex: 0 0 calc(50% - 7.5px); /* 1行に2つ */
                 max-width: calc(50% - 7.5px);
             }
         }
-        /* --- 新しいCSSの追加・変更ここまで --- */
 
-
-        .stock-card p {
+        .stock-card p, .index-card p {
             margin: 5px 0;
-            font-size: 14px; /* フォントサイズを少し小さくして収まりやすくする */
+            font-size: 14px;
         }
-        .stock-card p strong {
+        .stock-card p strong, .index-card p strong {
             color: #333;
         }
         .error {
@@ -142,8 +139,8 @@
         <h1>株価情報検索</h1>
 
         <div class="input-group">
-            <label for="stockCodes">株価コード (例: 6758.T, 9984.T, 7203.T, 6098.T, 4568.T):</label>
-            <input type="text" id="stockCodes" value="6758.T,9984.T,7203.T,6098.T,4568.T">
+            <label for="stockCodes">株価コード (例: 6758.T, 9984.T, ^DJI, ^N225):</label>
+            <input type="text" id="stockCodes" value="6758.T,^DJI,^N225">
         </div>
 
         <button id="fetchDataButton">株価データを取得</button>
@@ -172,14 +169,11 @@
             // !!!重要!!!
             // ここにデプロイしたCloudflare WorkerのURLを設定してください。
             // 例: https://your-worker-name.your-username.workers.dev/
-            const WORKER_URL = 'https://rustwasm-fullstack-app.sumitomo0210.workers.dev/'; // <<< ここをあなたのWorkerのURLに置き換える
+            const WORKER_URL = '"https://rustwasm-fullstack-app.sumitomo0210.workers.dev/'; // <<< ここをあなたのWorkerのURLに置き換える
 
             fetchDataButton.addEventListener('click', async () => {
                 const codes = stockCodesInput.value.trim();
-                if (!codes) {
-                    alert('株価コードを入力してください。');
-                    return;
-                }
+                // codesが空でもWorker側でデフォルトが設定されるため、ここでは空チェックをしない
 
                 resultsDiv.innerHTML = '';
                 errorDiv.style.display = 'none';
@@ -187,7 +181,9 @@
                 rawDataPre.textContent = '';
 
                 try {
-                    const response = await fetch(`${WORKER_URL}?codes=${codes}`);
+                    // codesが空文字列であればクエリパラメータなしでWorkerを呼び出し、Worker側でデフォルト処理
+                    const urlToFetch = codes ? `${WORKER_URL}?codes=${codes}` : WORKER_URL;
+                    const response = await fetch(urlToFetch);
                     const data = await response.json();
 
                     loadingDiv.style.display = 'none';
@@ -195,24 +191,40 @@
 
                     if (response.ok && data.status === 'success') {
                         if (data.data && data.data.length > 0) {
-                            data.data.forEach(stock => {
-                                const card = document.createElement('div');
-                                card.className = 'stock-card';
-                                if (stock.status === 'error') {
+                            data.data.forEach(item => {
+                                let card;
+                                if (item.status === 'error') {
+                                    card = document.createElement('div');
+                                    card.className = item.type === 'stock' ? 'stock-card' : 'index-card';
                                     card.innerHTML = `
-                                        <p><strong>コード:</strong> ${stock.company_code}</p>
-                                        <p class="error"><strong>エラー:</strong> ${stock.message || 'データ取得失敗'}</p>
+                                        <p><strong>コード:</strong> ${item.company_code || item.symbol || '不明'}</p>
+                                        <p class="error"><strong>エラー:</strong> ${item.message || 'データ取得失敗'}</p>
                                     `;
-                                } else {
+                                } else if (item.type === 'stock') {
+                                    card = document.createElement('div');
+                                    card.className = 'stock-card';
                                     card.innerHTML = `
-                                        <h3>${stock.company_name} (${stock.company_code})</h3>
-                                        <p><strong>現在の株価:</strong> ${stock.current_price}</p>
-                                        <p><strong>前日比:</strong> ${stock.change_amount} (${stock.change_percentage})</p>
-                                        <p><strong>更新日時:</strong> ${stock.update_time}</p>
-                                        <p><strong>ソース:</strong> ${stock.source}</p>
+                                        <h3>${item.company_name} (${item.company_code})</h3>
+                                        <p><strong>現在の株価:</strong> ${item.current_price}</p>
+                                        <p><strong>前日比:</strong> ${item.change_amount} (${item.change_percentage})</p>
+                                        <p><strong>更新日時:</strong> ${item.update_time}</p>
+                                        <p><strong>ソース:</strong> ${item.source}</p>
+                                    `;
+                                } else if (item.type === 'index') {
+                                    card = document.createElement('div');
+                                    card.className = 'index-card'; // 指数用のクラス名
+                                    card.innerHTML = `
+                                        <h3>${item.index_name} (${item.symbol})</h3>
+                                        <p><strong>現在の値:</strong> ${item.current_price}</p>
+                                        <p><strong>変化:</strong> ${item.change}</p>
+                                        <p><strong>更新日時:</strong> ${item.update_time}</p>
+                                        <p><strong>ソース:</strong> ${item.source}</p>
                                     `;
                                 }
-                                resultsDiv.appendChild(card);
+
+                                if (card) {
+                                    resultsDiv.appendChild(card);
+                                }
                             });
                         } else {
                             resultsDiv.innerHTML = '<p>データが見つかりませんでした。</p>';
@@ -229,7 +241,7 @@
                 }
             });
 
-            // 初期ロード時にデータを取得する (任意)
+            // 初期ロード時にデータを取得する
             fetchDataButton.click();
         });
     </script>
