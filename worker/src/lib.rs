@@ -48,7 +48,8 @@ fn extract_stock_data(html_body: &str, code: &str) -> serde_json::Value {
         }
     }
 
-    let time_selector = Selector::parse("#root > main > div > section > div.PriceBoardMain__1nb3 > div.PriceBoardMain__priceInformation__3YfB > div.PriceBoardMain__supplementBottom__380e > ul > li:nth-child(2)").unwrap();
+    // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
+    let time_selector = Selector::parse("div[class*='supplement'] span[class*='time']").unwrap();
     if let Some(element) = document.select(&time_selector).next() {
         update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }
@@ -81,7 +82,8 @@ async fn scrape_dow_average() -> Result<serde_json::Value> {
             let document = Html::parse_document(&html_body);
             
             let mut current_price = "N/A".to_string();
-            let mut change_info = "N/A".to_string(); 
+            let mut change_amount = "N/A".to_string();
+            let mut change_percentage = "N/A".to_string();
             let mut update_time = "N/A".to_string();
 
             let price_selector = Selector::parse("span._StyledNumber__value_x0ii7_10").unwrap();
@@ -89,22 +91,23 @@ async fn scrape_dow_average() -> Result<serde_json::Value> {
                 current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
 
-            let change_amount_selector = Selector::parse("div._PriceBoardMain_feslz_1 > div._PriceBoardMain__priceInformation_feslz_66 > div._PriceBoardMain__headerPrice_feslz_73 > div > div > dl > dd > span > span._StyledNumber__item_x0ii7_7._PriceChangeLabel__primary_l4zfe_55 > span").unwrap();
-            let change_percent_selector = Selector::parse("div._PriceBoardMain_feslz_1 > div._PriceBoardMain__priceInformation_feslz_66 > div._PriceBoardMain__headerPrice_feslz_73 > div > div > dl > dd > span > span._StyledNumber__item_x0ii7_7._StyledNumber__item--secondary_x0ii7_27._PriceChangeLabel__secondary_l4zfe_61 > span._StyledNumber__value_x0ii7_10").unwrap();
+            // 前日比（絶対額）
+            // セレクタはYahoo Financeのページ構造に依存します
+            let change_amount_selector = Selector::parse("span._StyledNumber__item_x0ii7_7._PriceChangeLabel__primary_l4zfe_55 > span._StyledNumber__value_x0ii7_10").unwrap();
+            if let Some(amount_el) = document.select(&change_amount_selector).next() {
+                change_amount = amount_el.text().collect::<Vec<_>>().join("").trim().to_string();
+            }
 
-            let mut amount_text = String::new();
-            if let Some(element) = document.select(&change_amount_selector).next() {
-                amount_text = element.text().collect::<Vec<_>>().join("").trim().to_string();
+            // 騰落率（パーセント）
+            // セレクタはYahoo Financeのページ構造に依存します
+            let change_percentage_selector = Selector::parse("span._StyledNumber__item_x0ii7_7._StyledNumber__item--secondary_x0ii7_27._PriceChangeLabel__secondary_l4zfe_61 > span._StyledNumber__value_x0ii7_10").unwrap();
+            if let Some(percent_el) = document.select(&change_percentage_selector).next() {
+                change_percentage = percent_el.text().collect::<Vec<_>>().join("").trim().to_string();
             }
-            let mut percent_text = String::new();
-            if let Some(element) = document.select(&change_percent_selector).next() {
-                percent_text = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-            if !amount_text.is_empty() || !percent_text.is_empty() {
-                change_info = format!("{} ({})", amount_text, percent_text);
-            }
+           
             
-            let time_selector = Selector::parse("div._PriceBoardMain_feslz_1 > div._PriceBoardMain__priceInformation_feslz_66 > div._PriceBoardMain__supplementBottom_feslz_88 > ul > li:nth-child(2) > time").unwrap();
+            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
+            let time_selector = Selector::parse("div[class*='supplement'] li").unwrap();
              if let Some(element) = document.select(&time_selector).next() {
                  update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
@@ -114,7 +117,8 @@ async fn scrape_dow_average() -> Result<serde_json::Value> {
                 "index_name": "Dow Jones Industrial Average",
                 "symbol": "^DJI",
                 "current_price": current_price,
-                "change": change_info,
+                "change_amount": change_amount,
+                "change_percentage": change_percentage,
                 "update_time": update_time,
                 "source": "Yahoo! Finance (US)"
             }))
@@ -167,7 +171,8 @@ async fn scrape_nikkei_average() -> Result<serde_json::Value> {
                 change_percentage = percent_el.text().collect::<Vec<_>>().join("").trim().to_string();
             }
 
-            let time_selector = Selector::parse("div > div.board__30eL > div.contents__2Ods > div.supplements__1ZLy > div.supplement__1hXE > ul > li:nth-child(2) > time").unwrap();
+            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
+            let time_selector = Selector::parse("div[class*='supplement'] li").unwrap();
              if let Some(element) = document.select(&time_selector).next() {
                  update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
@@ -231,9 +236,8 @@ async fn scrape_usdjpy() -> Result<serde_json::Value> {
             }
 
            
-            // 更新日時 (個別の株価ページと同じセレクタが機能する可能性が高い)
-            //#contents > div > div.board__1-Hj > div.contents__103w > div.supplements__1-o0 > p
-            let time_selector = Selector::parse("#contents > div > div.board__1-Hj > div.contents__103w > div.supplements__1-o0 > p").unwrap();
+            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
+            let time_selector = Selector::parse("div[class*='supplement'] p").unwrap();
             if let Some(element) = document.select(&time_selector).next() {
                 update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
