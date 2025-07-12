@@ -16,7 +16,7 @@ fn extract_stock_data(html_body: &str, code: &str) -> serde_json::Value {
     let mut change_percentage = "N/A".to_string();
     let mut update_time = "N/A".to_string();
 
-    let name_selector = Selector::parse("h2.PriceBoardMain__name__6uDh").unwrap();
+    let name_selector = Selector::parse("h2.PriceBoard__name__166W").unwrap();
     if let Some(element) = document.select(&name_selector).next() {
         company_name = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }
@@ -49,7 +49,7 @@ fn extract_stock_data(html_body: &str, code: &str) -> serde_json::Value {
     }
 
     // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-    let time_selector = Selector::parse("div[class*='supplement'] span[class*='time']").unwrap();
+    let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
     if let Some(element) = document.select(&time_selector).next() {
         update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
     }
@@ -107,7 +107,7 @@ async fn scrape_dow_average() -> Result<serde_json::Value> {
            
             
             // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-            let time_selector = Selector::parse("div[class*='supplement'] li").unwrap();
+            let time_selector = Selector::parse("li[class*='_CommonPriceBoard__time'] > time").unwrap();
              if let Some(element) = document.select(&time_selector).next() {
                  update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
@@ -136,7 +136,7 @@ async fn scrape_dow_average() -> Result<serde_json::Value> {
     }
 }
 
-// 日経平均株価をスクレイピングする関数 (変更なし)
+// 日経平均株価をスクレイピングする関数
 async fn scrape_nikkei_average() -> Result<serde_json::Value> {
     let target_url = "https://finance.yahoo.co.jp/quote/998407.O";
     console_log!("Scraping Nikkei Average from: {}", target_url);
@@ -156,25 +156,28 @@ async fn scrape_nikkei_average() -> Result<serde_json::Value> {
             let mut change_percentage = "N/A".to_string();
             let mut update_time = "N/A".to_string();
 
-            let price_selector = Selector::parse("span.number__3wVT").unwrap();
+            // CSSセレクタをより安定的なものに変更
+            //<span class="StyledNumber__value__3rXW">39,569.68</span>
+            let price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
             if let Some(element) = document.select(&price_selector).next() {
                 current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
-
-            let change_amount_selector = Selector::parse("p.changePriceLabel__2rHy span.changePrice__3dJY span span.number__3wVT").unwrap();
-            if let Some(amount_el) = document.select(&change_amount_selector).next() {
-                change_amount = amount_el.text().collect::<Vec<_>>().join("").trim().to_string();
+            //#root > main > div > section > div.PriceBoard__main__1liM > div.PriceBoard__priceInformation__78Tl > div.PriceBoard__priceBlock__1PmX > span > span > span
+            //#root > main > div > section > div.PriceBoard__main__1liM > div.PriceBoard__priceInformation__78Tl > div.PriceBoard__priceBlock__1PmX > div > dl > dd > span > span.StyledNumber__item__1-yu.PriceChangeLabel__primary__Y_ut > span
+            let change_amount_selector = Selector::parse("span[class*='PriceChangeLabel__primary'] >span[class*='StyledNumber__value']").unwrap();
+            if let Some(element) = document.select(&change_amount_selector).next() {
+                change_amount = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
 
-            let change_percentage_selector = Selector::parse("p.changePriceLabel__2rHy span.changePriceRate__3pJv span span.number__3wVT").unwrap();
-            if let Some(percent_el) = document.select(&change_percentage_selector).next() {
-                change_percentage = percent_el.text().collect::<Vec<_>>().join("").trim().to_string();
+            let change_percentage_selector = Selector::parse("span[class*='PriceChangeLabel__secondary'] >span[class*='StyledNumber__value']").unwrap();
+            if let Some(element) = document.select(&change_percentage_selector).next() {
+                // パーセント表示から括弧を除去
+                change_percentage = element.text().collect::<Vec<_>>().join("").trim().replace("(", "").replace(")", "").to_string();
             }
-
-            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-            let time_selector = Selector::parse("div[class*='supplement'] li").unwrap();
-             if let Some(element) = document.select(&time_selector).next() {
-                 update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
+            //<li class="PriceBoard__time__3ixW"><time>15:45</time></li>
+            let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
+            if let Some(element) = document.select(&time_selector).next() {
+                update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
             
             Ok(json!({
@@ -230,14 +233,14 @@ async fn scrape_usdjpy() -> Result<serde_json::Value> {
 
             // 現在価格
             //#contents > div > div.board__1-Hj > div.contents__103w > div.nameAndPrice__2AQd > p.price__1c9r > span
-            let price_selector = Selector::parse("#contents > div > div.board__1-Hj > div.contents__103w > div.nameAndPrice__2AQd > p.price__1c9r > span").unwrap();
+            let price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
             if let Some(element) = document.select(&price_selector).next() {
                 current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
 
            
             // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-            let time_selector = Selector::parse("div[class*='supplement'] p").unwrap();
+            let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
             if let Some(element) = document.select(&time_selector).next() {
                 update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
             }
@@ -289,7 +292,7 @@ async fn fetch(req: Request, _env: Env, _ctx: Context) -> Result<Response> {
         let mut default_codes = vec![
             "^DJI".to_string(),
             "^N225".to_string(),
-           // "6758.T".to_string(),
+            //"6758.T".to_string(),
             "USDJPY=X".to_string(), // ★★★ ここを追加 ★★★
         ];
 

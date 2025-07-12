@@ -33,8 +33,8 @@ async fn fetch(_req: Request, _env: Env, _ctx: Context) -> Result<Response> {
     // 3. 各情報に対応するCSSセレクタを定義し、情報を抽出
 
     // 企業名 (例: ソニーグループ(株))
-    // Yahooの構造では、h2.PriceBoardMain__name__6uDh は `ソニーグループ(株)` です
-    let name_selector = Selector::parse("h2.PriceBoardMain__name__6uDh").unwrap();
+    // Yahooの構造では、h2.PriceBoard__name__166W は `ソニーグループ(株)` です
+    let name_selector = Selector::parse("h2.PriceBoard__name__166W").unwrap();
     if let Some(element) = document.select(&name_selector).next() {
         company_name = element.text().collect::<Vec<_>>().join("").trim().to_string();
         console::log_1(&JsValue::from_str(&format!("企業名: {}", company_name)));
