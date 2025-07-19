@@ -1,383 +1,215 @@
-// src/lib.rs
-
-use worker::{event, console_log, Env, Request, Response, Result, Method, Context};
 use scraper::{Html, Selector};
-use serde_json::json;
-use worker::wasm_bindgen::JsValue;
+use serde::Serialize;
+use worker::{event, console_log, Env, Request, Response, Result, Method, Context};
+use futures::future::join_all;
 
-// HTMLから個別株価データを抽出する関数 (変更なし)
-fn extract_stock_data(html_body: &str, code: &str) -> serde_json::Value {
-    let document = Html::parse_document(html_body);
+// レスポンスのJSON形式を定義
+#[derive(Serialize)]
+struct ApiResponse {
+    status: String,
+    data: Vec<FinancialData>,
+}
 
-    let mut company_code = code.to_string();
-    let mut company_name = "N/A".to_string();
-    let mut current_price = "N/A".to_string();
-    let mut change_amount = "N/A".to_string();
-    let mut change_percentage = "N/A".to_string();
-    let mut update_time = "N/A".to_string();
+#[derive(Serialize, Debug, PartialEq, Clone)]
+pub struct FinancialData {
+    name: Option<String>,
+    code: Option<String>,
+    update_time: Option<String>,
+    current_value: Option<String>,
+    bid_value: Option<String>,
+    previous_day_change: Option<String>,
+    change_rate: Option<String>,
+}
 
-    let name_selector = Selector::parse("h2.PriceBoard__name__166W").unwrap();
+// &str ではなく String を受け取るように変更
+pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
+    let document = Html::parse_document(html_content);
+
+    let mut data = FinancialData {
+        name: None,
+        code: None,
+        update_time: None,
+        current_value: None,
+        bid_value: None,
+        previous_day_change: None,
+        change_rate: None,
+    };
+
+    let name_selector = Selector::parse("h2[class*=\"PriceBoard__name\"]").unwrap();
     if let Some(element) = document.select(&name_selector).next() {
-        company_name = element.text().collect::<Vec<_>>().join("").trim().to_string();
+        data.name = Some(element.text().collect::<String>());
     }
 
-    let code_selector = Selector::parse("span.PriceBoardMain__code__2wso").unwrap();
-    if let Some(element) = document.select(&code_selector).next() {
-        let extracted_code = element.text().collect::<Vec<_>>().join("").trim().to_string();
-        if !extracted_code.is_empty() {
-             company_code = extracted_code.trim_matches('(').trim_matches(')').replace(".T", "").to_string();
+    let code_selector = Selector::parse("span[class*=\"PriceBoard__code\"]").unwrap();
+    if !url.contains("USDJPY=X") {
+        if let Some(element) = document.select(&code_selector).next() {
+            data.code = Some(element.text().collect::<String>());
         }
     }
 
-    let current_price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
-    if let Some(element) = document.select(&current_price_selector).next() {
-        current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
-    }
-
-    let price_change_dd_selector = Selector::parse("dd.PriceChangeLabel__description__a5Lp").unwrap();
-    if let Some(dd_element) = document.select(&price_change_dd_selector).next() {
-        let value_spans_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
-        let values: Vec<String> = dd_element
-            .select(&value_spans_selector)
-            .map(|el| el.text().collect::<Vec<_>>().join("").trim().to_string())
-            .collect();
-
-        if values.len() >= 2 {
-            change_amount = values[0].clone();
-            change_percentage = values[1].clone();
-        }
-    }
-
-    // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-    let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
+    let time_selector = Selector::parse("time").unwrap();
     if let Some(element) = document.select(&time_selector).next() {
-        update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
+        data.update_time = Some(element.text().collect::<String>());
     }
 
-    json!({
-        "type": "stock",
-        "company_code": company_code,
-        "company_name": company_name,
-        "current_price": current_price,
-        "change_amount": change_amount,
-        "change_percentage": change_percentage,
-        "update_time": update_time,
-        "source": "Yahoo! Finance Japan"
-    })
-}
-
-// ダウ平均株価をスクレイピングする関数 (変更なし)
-async fn scrape_dow_average() -> Result<serde_json::Value> {
-    let target_url = "https://finance.yahoo.co.jp/quote/%5EDJI";
-    console_log!("Scraping Dow Average from: {}", target_url);
-
-    let fetch_result = worker::Fetch::Url(target_url.parse().unwrap())
-        .send()
-        .await?
-        .text()
-        .await;
-
-    match fetch_result {
-        Ok(html_body) => {
-            let document = Html::parse_document(&html_body);
-            
-            let mut current_price = "N/A".to_string();
-            let mut change_amount = "N/A".to_string();
-            let mut change_percentage = "N/A".to_string();
-            let mut update_time = "N/A".to_string();
-
-            let price_selector = Selector::parse("span._StyledNumber__value_x0ii7_10").unwrap();
-            if let Some(element) = document.select(&price_selector).next() {
-                current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-
-            // 前日比（絶対額）
-            // セレクタはYahoo Financeのページ構造に依存します
-            let change_amount_selector = Selector::parse("span._StyledNumber__item_x0ii7_7._PriceChangeLabel__primary_l4zfe_55 > span._StyledNumber__value_x0ii7_10").unwrap();
-            if let Some(amount_el) = document.select(&change_amount_selector).next() {
-                change_amount = amount_el.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-
-            // 騰落率（パーセント）
-            // セレクタはYahoo Financeのページ構造に依存します
-            let change_percentage_selector = Selector::parse("span._StyledNumber__item_x0ii7_7._StyledNumber__item--secondary_x0ii7_27._PriceChangeLabel__secondary_l4zfe_61 > span._StyledNumber__value_x0ii7_10").unwrap();
-            if let Some(percent_el) = document.select(&change_percentage_selector).next() {
-                change_percentage = percent_el.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-           
-            
-            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-            let time_selector = Selector::parse("li[class*='_CommonPriceBoard__time'] > time").unwrap();
-             if let Some(element) = document.select(&time_selector).next() {
-                 update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-
-            Ok(json!({
-                "type": "index",
-                "index_name": "Dow Jones Industrial Average",
-                "symbol": "^DJI",
-                "current_price": current_price,
-                "change_amount": change_amount,
-                "change_percentage": change_percentage,
-                "update_time": update_time,
-                "source": "Yahoo! Finance (US)"
-            }))
-        },
-        Err(e) => {
-            console_log!("Failed to scrape Dow Average: {:?}", e);
-            Ok(json!({
-                "type": "index",
-                "index_name": "Dow Jones Industrial Average",
-                "symbol": "^DJI",
-                "status": "error",
-                "message": format!("Scraping error: {:?}", e)
-            }))
-        }
-    }
-}
-
-// 日経平均株価をスクレイピングする関数
-async fn scrape_nikkei_average() -> Result<serde_json::Value> {
-    let target_url = "https://finance.yahoo.co.jp/quote/998407.O";
-    console_log!("Scraping Nikkei Average from: {}", target_url);
-
-    let fetch_result = worker::Fetch::Url(target_url.parse().unwrap())
-        .send()
-        .await?
-        .text()
-        .await;
-
-    match fetch_result {
-        Ok(html_body) => {
-            let document = Html::parse_document(&html_body);
-            
-            let mut current_price = "N/A".to_string();
-            let mut change_amount = "N/A".to_string();
-            let mut change_percentage = "N/A".to_string();
-            let mut update_time = "N/A".to_string();
-
-            // CSSセレクタをより安定的なものに変更
-            //<span class="StyledNumber__value__3rXW">39,569.68</span>
-            let price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
-            if let Some(element) = document.select(&price_selector).next() {
-                current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-            //#root > main > div > section > div.PriceBoard__main__1liM > div.PriceBoard__priceInformation__78Tl > div.PriceBoard__priceBlock__1PmX > span > span > span
-            //#root > main > div > section > div.PriceBoard__main__1liM > div.PriceBoard__priceInformation__78Tl > div.PriceBoard__priceBlock__1PmX > div > dl > dd > span > span.StyledNumber__item__1-yu.PriceChangeLabel__primary__Y_ut > span
-            let change_amount_selector = Selector::parse("span[class*='PriceChangeLabel__primary'] >span[class*='StyledNumber__value']").unwrap();
-            if let Some(element) = document.select(&change_amount_selector).next() {
-                change_amount = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-
-            let change_percentage_selector = Selector::parse("span[class*='PriceChangeLabel__secondary'] >span[class*='StyledNumber__value']").unwrap();
-            if let Some(element) = document.select(&change_percentage_selector).next() {
-                // パーセント表示から括弧を除去
-                change_percentage = element.text().collect::<Vec<_>>().join("").trim().replace("(", "").replace(")", "").to_string();
-            }
-            //<li class="PriceBoard__time__3ixW"><time>15:45</time></li>
-            let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
-            if let Some(element) = document.select(&time_selector).next() {
-                update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-            
-            Ok(json!({
-                "type": "index",
-                "index_name": "Nikkei 225 Futures",
-                "symbol": "998407.O",
-                "current_price": current_price,
-                "change_amount": change_amount,
-                "change_percentage": change_percentage,
-                "update_time": update_time,
-                "source": "Yahoo! Finance Japan (Futures)"
-            }))
-        },
-        Err(e) => {
-            console_log!("Failed to scrape Nikkei Average from 998407.O: {:?}", e);
-            Ok(json!({
-                "type": "index",
-                "index_name": "Nikkei 225 Futures",
-                "symbol": "998407.O",
-                "status": "error",
-                "message": format!("Scraping error: {:?}", e)
-            }))
-        }
-    }
-}
-
-
-// src/lib.rs
-
-// ... (既存のuseステートメントやextract_stock_data, scrape_dow_average, scrape_nikkei_average 関数) ...
-
-// 米ドル/円の外国為替レートをスクレイピングする関数
-// Yahoo!ファイナンス日本版のUSDJPY=XページのHTML構造に依存します。
-// セレクタはウェブサイトの変更により機能しなくなる可能性があります。
-async fn scrape_usdjpy() -> Result<serde_json::Value> {
-    let target_url = "https://finance.yahoo.co.jp/quote/USDJPY=X";
-    console_log!("Scraping USDJPY from: {}", target_url);
-
-    let fetch_result = worker::Fetch::Url(target_url.parse().unwrap())
-        .send()
-        .await?
-        .text()
-        .await;
-
-    match fetch_result {
-        Ok(html_body) => {
-            let document = Html::parse_document(&html_body);
-            
-            let mut current_price = "N/A".to_string();
-            let mut change_amount = "N/A".to_string();
-            let mut change_percentage = "N/A".to_string();
-            let mut update_time = "N/A".to_string(); // 為替では「更新日時」ではなく「取引時間」などになることもあります
-
-            // 現在価格
-            //#contents > div > div.board__1-Hj > div.contents__103w > div.nameAndPrice__2AQd > p.price__1c9r > span
-            let price_selector = Selector::parse("span.StyledNumber__value__3rXW").unwrap();
-            if let Some(element) = document.select(&price_selector).next() {
-                current_price = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-
-           
-            // 更新日時。動的なクラス名に依存しないように、より一般的なセレクタに変更。
-            let time_selector = Selector::parse("li[class*='PriceBoard__time'] > time").unwrap();
-            if let Some(element) = document.select(&time_selector).next() {
-                update_time = element.text().collect::<Vec<_>>().join("").trim().to_string();
-            }
-            
-            Ok(json!({
-                "type": "forex", // 新しいタイプを追加
-                "currency_pair": "米ドル/円",
-                "symbol": "USDJPY=X",
-                "current_price": current_price,
-                //"change_amount": change_amount,
-                //"change_percentage": change_percentage,
-                "update_time": update_time,
-                "source": "Yahoo! Finance Japan"
-            }))
-        },
-        Err(e) => {
-            console_log!("Failed to scrape USDJPY: {:?}", e);
-            Ok(json!({
-                "type": "forex",
-                "currency_pair": "米ドル/円",
-                "symbol": "USDJPY=X",
-                "status": "error",
-                "message": format!("Scraping error: {:?}", e)
-            }))
-        }
-    }
-}
-
-
-// fetch イベントハンドラ
-#[event(fetch)]
-async fn fetch(req: Request, _env: Env, _ctx: Context) -> Result<Response> {
-    console_log!("Worker received request.");
-
-    if req.method() == Method::Options {
-        let mut response = Response::empty()?;
-        response.headers_mut().set("Access-Control-Allow-Origin", "*")?;
-        response.headers_mut().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
-        response.headers_mut().set("Access-Control-Allow-Headers", "Content-Type")?;
-        console_log!("Handling OPTIONS request for CORS.");
-        return Ok(response);
-    }
-
-    let url = req.url()?;
-    let path = url.path();
-    let query_params = url.query_pairs();
-
-    if path == "/" || path == "/api/stocks" {
-        let mut default_codes = vec![
-            "^DJI".to_string(),
-            "^N225".to_string(),
-            //"6758.T".to_string(),
-            "USDJPY=X".to_string(), // ★★★ ここを追加 ★★★
-        ];
-
-        let mut received_codes_from_param: Vec<String> = Vec::new();
-        for (key, value) in query_params {
-            if key == "codes" {
-                received_codes_from_param = value.split(',').map(|s| s.trim().to_string()).collect();
-                break;
-            }
-        }
-
-        let mut final_codes_to_fetch = Vec::new();
-
-        if received_codes_from_param.is_empty() {
-            final_codes_to_fetch.extend(default_codes);
-            console_log!("No 'codes' query parameter provided. Using default: {:?}", final_codes_to_fetch);
-        } else {
-            final_codes_to_fetch.extend(default_codes);
-            final_codes_to_fetch.extend(received_codes_from_param.clone());
-            console_log!("Received codes: {:?}. Appending to defaults. Final list: {:?}", received_codes_from_param, final_codes_to_fetch);
-        }
-
-        let mut results = Vec::new();
-
-        for code in final_codes_to_fetch {
-            let processed_code = code.to_uppercase(); 
-
-            let result_json = match processed_code.as_str() {
-                "^DJI" => scrape_dow_average().await?,
-                "^N225" => scrape_nikkei_average().await?, 
-                "USDJPY=X" => scrape_usdjpy().await?, // ★★★ ここを追加 ★★★
-                _ => {
-                    let yahoo_finance_url = format!("https://finance.yahoo.co.jp/quote/{}", code);
-                    console_log!("Fetching data for: {}", code);
-                    
-                    let fetch_result = worker::Fetch::Url(yahoo_finance_url.parse().unwrap())
-                        .send()
-                        .await?
-                        .text()
-                        .await;
-
-                    match fetch_result {
-                        Ok(html_body) => {
-                            console_log!("Fetched HTML for {}", code);
-                            let stock_data = extract_stock_data(&html_body, &code);
-                            stock_data
-                        }
-                        Err(e) => {
-                            console_log!("Failed to fetch HTML for {}: {:?}", code, e);
-                            json!({
-                                "type": "stock",
-                                "company_code": code,
-                                "status": "error",
-                                "message": format!("Fetch error: {:?}", e)
-                            })
+    if url.contains("USDJPY=X") {
+        let bid_term_selector = Selector::parse("dt[class*=\"_FxPriceBoard__term\"]").unwrap();
+        for dt_element in document.select(&bid_term_selector) {
+            if dt_element.text().collect::<String>().trim() == "Bid（売値）" {
+                if let Some(parent_dl_node) = dt_element.parent() {
+                    if let Some(parent_dl_element) = scraper::ElementRef::wrap(parent_dl_node) {
+                        let dd_selector = Selector::parse("dd[class*=\"_FxPriceBoard__description\"]").unwrap();
+                        if let Some(dd_element) = parent_dl_element.select(&dd_selector).next() {
+                            let price_span_selector = Selector::parse("span[class*=\"_FxPriceBoard__price\"]").unwrap();
+                            if let Some(price_span_element) = dd_element.select(&price_span_selector).next() {
+                                data.bid_value = Some(price_span_element.text().collect::<String>());
+                                break;
+                            }
                         }
                     }
                 }
-            };
-            results.push(result_json);
+            }
+        }
+    } else {
+        let price_selector = Selector::parse("span[class*=\"PriceBoard__price\"] span[class*=\"StyledNumber__value\"]").unwrap();
+        if let Some(element) = document.select(&price_selector).next() {
+            data.current_value = Some(element.text().collect::<String>());
         }
 
-        let response_data = json!({
-            "status": "success",
-            "data": results
-        });
+        let change_selector = Selector::parse("div[class*=\"PriceChangeLabel\"] span[class*=\"StyledNumber__value\"]").unwrap();
+        let changes: Vec<String> = document
+            .select(&change_selector)
+            .map(|el| el.text().collect::<String>())
+            .collect();
 
-        console_log!("Response JSON: {}", response_data.to_string());
+        if changes.len() >= 2 {
+            data.previous_day_change = Some(changes[0].clone());
+            data.change_rate = Some(changes[1].clone());
+        }
+    }
+    data
+}
 
-        let mut response = Response::ok(response_data.to_string())?;
-        response.headers_mut().set("Content-Type", "application/json; charset=utf-8")?;
-        response.headers_mut().set("Access-Control-Allow-Origin", "*")?;
-        response.headers_mut().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
-        response.headers_mut().set("Access-Control-Allow-Headers", "Content-Type")?;
+// &str ではなく String を受け取るように変更
+pub async fn fetch_financial_data(url: String) -> Result<FinancialData> {
+    console_log!("Fetching financial data from: {}", &url);
+    let html_content = worker::Fetch::Url(url.parse().unwrap()).send().await?.text().await?;
+    let data = parse_financial_data(&html_content, url);
+    Ok(data)
+}
 
-        Ok(response)
+#[event(fetch)]
+async fn fetch(req: Request, _env: Env, _ctx: Context) -> Result<Response> {
+    if req.method() == Method::Options {
+        let mut headers = worker::Headers::new();
+        headers.set("Access-Control-Allow-Origin", "*")?;
+        headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")?;
+        headers.set("Access-Control-Allow-Headers", "Content-Type")?;
+        return Ok(Response::empty()?.with_headers(headers));
+    }
+
+    let url = req.url()?;
+    if url.path() == "/api/quote" {
+        let query_params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        
+        if let Some(codes_str) = query_params.get("codes") {
+            let codes: Vec<&str> = codes_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+            
+            let futures: Vec<_> = codes.into_iter().map(|code| {
+                let yahoo_url = format!("https://finance.yahoo.co.jp/quote/{}", code);
+                // & を外して所有権を渡す
+                fetch_financial_data(yahoo_url)
+            }).collect();
+            
+            let results: Vec<FinancialData> = join_all(futures).await
+                .into_iter()
+                .filter_map(Result::ok)
+                .collect();
+
+            let api_response = ApiResponse {
+                status: "success".to_string(),
+                data: results,
+            };
+
+            let mut response = Response::from_json(&api_response)?;
+            response.headers_mut().set("Access-Control-Allow-Origin", "*")?;
+            Ok(response)
+
+        } else {
+            Response::error("Query parameter 'codes' is required.", 400)
+        }
     } else {
         Response::error("Not Found", 404)
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// ... (start関数はそのまま) ...
-#[event(start)]
-fn start() {
-    #[cfg(feature = "console_error_panic_hook")]
-    console_error_panic_hook::set_once();
+    #[test]
+    fn test_parse_stock_data() {
+        let sample_html = r#"
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h2 class=\"PriceBoard__name__166W\">テスト株式会社</h2>
+                <span class=\"PriceBoard__code__2wso\">(9999.T)</span>
+                <div>
+                    <span class=\"PriceBoard__price__2f94\"><span class=\"StyledNumber__value__3rXW\">1,234</span></span>
+                </div>
+                <div class=\"PriceChangeLabel__label__3o3i\">
+                    <span class=\"StyledNumber__value__3rXW\">+56</span>
+                    <span class=\"StyledNumber__value__3rXW\">(+4.75%)</span>
+                </div>
+                <time datetime=\"2025-07-19T15:00:00+09:00\">15:00</time>
+            </body>
+            </html>
+        "#;
+        let url = "https://finance.yahoo.co.jp/quote/9999.T".to_string();
+        let expected_data = FinancialData {
+            name: Some("テスト株式会社".to_string()),
+            code: Some("(9999.T)".to_string()),
+            update_time: Some("15:00".to_string()),
+            current_value: Some("1,234".to_string()),
+            bid_value: None,
+            previous_day_change: Some("+56".to_string()),
+            change_rate: Some("(+4.75%)".to_string()),
+        };
+
+        let result_data = parse_financial_data(sample_html, url);
+        assert_eq!(result_data, expected_data);
+    }
+
+    #[test]
+    fn test_parse_usdjpy_data() {
+        let sample_html = r#"
+            <!DOCTYPE html>
+            <html>
+            <body>
+                <h2 class=\"PriceBoard__name__166W\">米ドル/円</h2>
+                <dl>
+                    <dt class=\"_FxPriceBoard__term__abc\">Bid（売値）</dt>
+                    <dd class=\"_FxPriceBoard__description__def\">
+                        <span class=\"_FxPriceBoard__price__ghi\">150.123</span>
+                    </dd>
+                </dl>
+                <time datetime=\"2025-07-19T10:30:00+09:00\">10:30</time>
+            </body>
+            </html>
+        "#;
+        let url = "https://finance.yahoo.co.jp/quote/USDJPY=X".to_string();
+        let expected_data = FinancialData {
+            name: Some("米ドル/円".to_string()),
+            code: None,
+            update_time: Some("10:30".to_string()),
+            current_value: None,
+            bid_value: Some("150.123".to_string()),
+            previous_day_change: None,
+            change_rate: None,
+        };
+
+        let result_data = parse_financial_data(sample_html, url);
+        assert_eq!(result_data, expected_data);
+    }
 }
