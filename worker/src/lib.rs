@@ -45,7 +45,7 @@ pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
         code: if !url.contains("USDJPY=FX") {
             get_text(document.select(&code_selector).next())
         } else {
-            Some("Not set".to_string())
+            Some("USDJPY=FX".to_string())
         },
         update_time: get_text(document.select(&time_selector).next()),
         current_value: None,
