@@ -25,63 +25,55 @@ pub struct FinancialData {
 pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
     let document = Html::parse_document(html_content);
 
+    // セレクタをまとめてパース
+    let name_selector = Selector::parse("h2[class*=\"PriceBoard__name\"]").expect("Failed to parse name selector");
+    let code_selector = Selector::parse("span[class*=\"PriceBoard__code\"]").expect("Failed to parse code selector");
+    let time_selector = Selector::parse("time").expect("Failed to parse time selector");
+    let price_selector = Selector::parse("span[class*=\"PriceBoard__price\"] span[class*=\"StyledNumber__value\"]").expect("Failed to parse price selector");
+    let change_selector = Selector::parse("div[class*=\"PriceChangeLabel\"] span[class*=\"StyledNumber__value\"]").expect("Failed to parse change selector");
+    let bid_term_selector = Selector::parse("dt[class*=\"_FxPriceBoard__term\"]").expect("Failed to parse bid term selector");
+    let dd_selector = Selector::parse("dd[class*=\"_FxPriceBoard__description\"]").expect("Failed to parse dd selector");
+    let price_span_selector = Selector::parse("span[class*=\"_FxPriceBoard__price\"]").expect("Failed to parse price span selector");
+    let dd_plain_selector = Selector::parse("dd").expect("Failed to parse dd plain selector");
+    let span_selector = Selector::parse("span").expect("Failed to parse span selector");
+
+    // テキスト取得のヘルパー
+    let get_text = |el: Option<scraper::ElementRef>| el.map(|e| e.text().collect::<String>());
+
     let mut data = FinancialData {
-        name: None,
-        code: None,
-        update_time: None,
+        name: get_text(document.select(&name_selector).next()),
+        code: if !url.contains("USDJPY=FX") {
+            get_text(document.select(&code_selector).next())
+        } else {
+            None
+        },
+        update_time: get_text(document.select(&time_selector).next()),
         current_value: None,
         bid_value: None,
         previous_day_change: None,
         change_rate: None,
     };
 
-    let name_selector = Selector::parse("h2[class*=\"PriceBoard__name\"]").unwrap();
-    if let Some(element) = document.select(&name_selector).next() {
-        data.name = Some(element.text().collect::<String>());
-    }
-
-    let code_selector = Selector::parse("span[class*=\"PriceBoard__code\"]").unwrap();
-    if !url.contains("USDJPY=X") {
-        if let Some(element) = document.select(&code_selector).next() {
-            data.code = Some(element.text().collect::<String>());
+    if url.contains("USDJPY=FX") {
+        for dt in document.select(&bid_term_selector) {
+            if dt.text().collect::<String>().trim() == "Bid（売値）" {
+                if let Some(dl) = dt.parent().and_then(scraper::ElementRef::wrap) {
+                    data.bid_value = get_text(dl.select(&dd_selector).next().and_then(|dd| dd.select(&price_span_selector).next()));
+                    break;
+                }
+            }
         }
-    }
-
-    let time_selector = Selector::parse("time").unwrap();
-    if let Some(element) = document.select(&time_selector).next() {
-        data.update_time = Some(element.text().collect::<String>());
-    }
-
-    if url.contains("USDJPY=X") {
-        let bid_term_selector = Selector::parse("dt[class*=\"_FxPriceBoard__term\"]").unwrap();
-        for dt_element in document.select(&bid_term_selector) {
-            if dt_element.text().collect::<String>().trim() == "Bid（売値）" {
-                if let Some(parent_dl_node) = dt_element.parent() {
-                    if let Some(parent_dl_element) = scraper::ElementRef::wrap(parent_dl_node) {
-                        let dd_selector = Selector::parse("dd[class*=\"_FxPriceBoard__description\"]").unwrap();
-                        if let Some(dd_element) = parent_dl_element.select(&dd_selector).next() {
-                            let price_span_selector = Selector::parse("span[class*=\"_FxPriceBoard__price\"]").unwrap();
-                            if let Some(price_span_element) = dd_element.select(&price_span_selector).next() {
-                                data.bid_value = Some(price_span_element.text().collect::<String>());
-                                break;
-                            }
-                        }
-                    }
+        for dt in document.select(&bid_term_selector) {
+            if dt.text().collect::<String>().trim() == "Change（始値比）" {
+                if let Some(dl) = dt.parent().and_then(scraper::ElementRef::wrap) {
+                    data.change_rate = get_text(dl.select(&dd_plain_selector).next().and_then(|dd| dd.select(&span_selector).next()));
+                    break;
                 }
             }
         }
     } else {
-        let price_selector = Selector::parse("span[class*=\"PriceBoard__price\"] span[class*=\"StyledNumber__value\"]").unwrap();
-        if let Some(element) = document.select(&price_selector).next() {
-            data.current_value = Some(element.text().collect::<String>());
-        }
-
-        let change_selector = Selector::parse("div[class*=\"PriceChangeLabel\"] span[class*=\"StyledNumber__value\"]").unwrap();
-        let changes: Vec<String> = document
-            .select(&change_selector)
-            .map(|el| el.text().collect::<String>())
-            .collect();
-
+        data.current_value = get_text(document.select(&price_selector).next());
+        let changes: Vec<String> = document.select(&change_selector).map(|el| el.text().collect()).collect();
         if changes.len() >= 2 {
             data.previous_day_change = Some(changes[0].clone());
             data.change_rate = Some(changes[1].clone());
@@ -93,7 +85,7 @@ pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
 // &str ではなく String を受け取るように変更
 pub async fn fetch_financial_data(url: String) -> Result<FinancialData> {
     console_log!("Fetching financial data from: {}", &url);
-    let html_content = worker::Fetch::Url(url.parse().unwrap()).send().await?.text().await?;
+    let html_content = worker::Fetch::Url(url.parse().expect("Failed to parse URL")).send().await?.text().await?;
     let data = parse_financial_data(&html_content, url);
     Ok(data)
 }
@@ -198,7 +190,7 @@ mod tests {
             </body>
             </html>
         "#;
-        let url = "https://finance.yahoo.co.jp/quote/USDJPY=X".to_string();
+        let url = "https://finance.yahoo.co.jp/quote/USDJPY=FX".to_string();
         let expected_data = FinancialData {
             name: Some("米ドル/円".to_string()),
             code: None,

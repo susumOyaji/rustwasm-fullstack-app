@@ -4,3 +4,5 @@ node_modules
 
 
 #http://127.0.0.1:8080/quote?code=USDJPY=FX
+#http://127.0.0.1:8787/api/quote?codes=USDJPY=FX
+#http://127.0.0.1:8787/api/quote?codes=6758.T
