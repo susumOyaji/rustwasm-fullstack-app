@@ -40,14 +40,12 @@ pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
     // テキスト取得のヘルパー
     let get_text = |el: Option<scraper::ElementRef>| el.map(|e| e.text().collect::<String>());
 
-    let code_from_html = get_text(document.select(&code_selector).next());
-    let code_from_url = url.split('/').last().map(|s| s.to_string());
-
     let mut data = FinancialData {
         name: get_text(document.select(&name_selector).next()),
-        code: match code_from_html {
-            Some(ref s) if !s.trim().is_empty() => Some(s.clone()),
-            _ => code_from_url,
+        code: if !url.contains("USDJPY=FX") {
+            get_text(document.select(&code_selector).next())
+        } else {
+            Some("USDJPY=FX".to_string())
         },
         update_time: get_text(document.select(&time_selector).next()),
         current_value: None,
