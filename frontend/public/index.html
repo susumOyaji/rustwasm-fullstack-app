@@ -166,10 +166,8 @@
             const loadingDiv = document.getElementById('loading');
             const rawDataPre = document.getElementById('rawData');
 
-            // !!!重要!!!
-            // ここにデプロイしたCloudflare WorkerのURLを設定してください。
-            // 例: https://your-worker-name.your-username.workers.dev/
-            const WORKER_URL = '"https://rustwasm-fullstack-app.sumitomo0210.workers.dev/'; // <<< ここをあなたのWorkerのURLに置き換える
+            // ローカルのWorkerに接続するように変更
+            const WORKER_URL = 'http://127.0.0.1:8787'; 
 
             fetchDataButton.addEventListener('click', async () => {
                 const codes = stockCodesInput.value.trim();
@@ -182,7 +180,7 @@
 
                 try {
                     // codesが空文字列であればクエリパラメータなしでWorkerを呼び出し、Worker側でデフォルト処理
-                    const urlToFetch = codes ? `${WORKER_URL}?codes=${codes}` : WORKER_URL;
+                    const urlToFetch = codes ? `${WORKER_URL}/api/quote?codes=${codes}` : `${WORKER_URL}/api/quote`;
                     const response = await fetch(urlToFetch);
                     const data = await response.json();
 

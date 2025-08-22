@@ -180,23 +180,20 @@ mod tests {
             <html>
             <body>
                 <h2 class=\"PriceBoard__name__166W\">米ドル/円</h2>
-                <dl>
-                    <dt class=\"_FxPriceBoard__term__abc\">Bid（売値）</dt>
-                    <dd class=\"_FxPriceBoard__description__def\">
-                        <span class=\"_FxPriceBoard__price__ghi\">150.123</span>
-                    </dd>
-                </dl>
-                <time datetime=\"2025-07-19T10:30:00+09:00\">10:30</time>
+                <div>
+                    <span data-testid=\"text-for-price\">152.50</span>
+                </div>
+                <time>12:00</time>
             </body>
             </html>
         "#;
         let url = "https://finance.yahoo.co.jp/quote/USDJPY=FX".to_string();
         let expected_data = FinancialData {
             name: Some("米ドル/円".to_string()),
-            code: None,
-            update_time: Some("10:30".to_string()),
-            current_value: None,
-            bid_value: Some("150.123".to_string()),
+            code: Some("USDJPY=FX".to_string()),
+            update_time: Some("12:00".to_string()),
+            current_value: Some("152.50".to_string()),
+            bid_value: None,
             previous_day_change: None,
             change_rate: None,
         };
