@@ -4,6 +4,8 @@ node_modules
 
 
 #http://127.0.0.1:8787/api/quote?codes=USDJPY=FX
-#http://127.0.0.1:8787/api/quote?codes=USDJPY=FX
+#http://127.0.0.1:8787/api/quote?codes=USDJPY=FX,^DJI,998407.O,7203.T
 #http://127.0.0.1:8787/api/quote?codes=6758.T
 #https://rustwasm-fullstack-app.sumitomo0210.workers.dev/api/quote?codes=USDJPY=FX
+#cargo test -- --ignored
+# 例: /api/quote?codes=7203.T,^DJI,998407.O,USDJPY=FX
