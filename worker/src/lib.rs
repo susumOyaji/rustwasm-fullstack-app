@@ -314,22 +314,41 @@ async fn handle_post_selectors(mut req: Request, ctx: RouteContext<()>) -> Resul
         return Response::error("ADMIN_KEY not set", 500);
     }
 
+    let req_url = req.url()?;
+    let query_params: HashMap<_, _> = req_url.query_pairs().into_owned().collect();
+
     let code_type_str = match ctx.param("code_type") {
         Some(ct) => ct,
         None => return Response::error("Parameter 'code_type' is required.", 400),
     };
     let code_type: CodeType = code_type_str.parse()?;
-
-    let selectors: SelectorConfig = req.json().await?;
     let kv = ctx.env.kv("FIN_SELECTORS")?;
-    kv.put(code_type.as_str(), selectors)?.execute().await?;
 
-    let api_response = ApiResponse {
-        status: "success".to_string(),
-        data: format!("Selectors for '{}' updated.", code_type.as_str()),
+    let response_result = if query_params.get("autoupdate").map_or(false, |v| v == "true") {
+        let url_to_check = match query_params.get("url") {
+            Some(u) => u,
+            None => return Response::error("Query parameter 'url' is required for autoupdate.", 400),
+        };
+        let new_selectors: SelectorConfig = req.json().await?;
+        let update_result = auto_update_invalid_selectors(url_to_check, code_type, &new_selectors, &kv).await?;
+        
+        let api_response = ApiResponse {
+            status: "success".to_string(),
+            data: update_result,
+        };
+        Response::from_json(&api_response)
+    } else {
+        let selectors: SelectorConfig = req.json().await?;
+        kv.put(code_type.as_str(), selectors)?.execute().await?;
+
+        let api_response = ApiResponse {
+            status: "success".to_string(),
+            data: format!("Selectors for '{}' updated.", code_type.as_str()),
+        };
+        Response::from_json(&api_response)
     };
     
-    let mut response = Response::from_json(&api_response)?;
+    let mut response = response_result?;
     response.headers_mut().set("Access-Control-Allow-Origin", "*")?;
     Ok(response)
 }
