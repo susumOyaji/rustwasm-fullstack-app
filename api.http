@@ -1,0 +1,16 @@
+### GitHub API からユーザー情報を取得
+GET https://api.github.com/users/octocat
+Accept: application/json
+
+### POST リクエストの例
+POST http://localhost:8787/api/test-parser
+Content-Type: application/json
+ 
+     {
+       "html_content": "<html><body><h1>テスト株式会社</h1><p>現在値: <span class=\"price\">123.45</span></p></body></html>",
+       "code": "TEST01",
+       "selectors": {
+         "name_selector": "h1",
+         "current_value_selector": ".price"
+       }
+     }

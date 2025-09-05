@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "rustwasm-fullstack-app" generated at 2025-09-04T03:35:15.707Z.

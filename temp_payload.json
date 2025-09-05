@@ -1,0 +1,14 @@
+{
+  "html_content": "<html><body><h1>テスト株式会社</h1><p>現在値: <span class=\"price\">123.45</span></p></body></html>",
+  "code": "TEST01",
+  "selectors": {
+    "name_selector": "h1",
+    "current_value_selector": ".price",
+    "previous_day_change_selector": null,
+    "change_rate_selector": null,
+    "update_time_selector": null,
+    "fx_item_selector": null,
+    "fx_term_selector": null,
+    "fx_price_selector": null
+  }
+}
