@@ -229,10 +229,44 @@ pub async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/api/test-parser", |mut req, _ctx| async move {
             handle_test_parser(req).await
         })
+        .get_async("/api/dji", |_req, _ctx| async move {
+            let result = get_dji_data().await;
+            let mut response = match result {
+                Ok(data) => {
+                    let api_response = ApiResponse {
+                        status: "success".to_string(),
+                        data,
+                    };
+                    Response::from_json(&api_response)?
+                }
+                Err(e) => {
+                    let error_response = ApiResponse {
+                        status: "error".to_string(),
+                        data: e.to_string(),
+                    };
+                    Response::from_json(&error_response)?
+                }
+            };
+            response.headers_mut().set("Access-Control-Allow-Origin", "*")?;
+            Ok(response)
+        })
+        // Routes for managing selectors
+        .get_async("/api/selectors/:code_type", |_req, ctx| {
+            handle_get_selectors(ctx)
+        })
+        .post_async("/api/selectors/:code_type", |mut req, ctx| {
+            handle_post_selectors(req, ctx)
+        })
+        .delete_async("/api/selectors/:code_type", |req, ctx| {
+            handle_delete_selectors(req, ctx)
+        })
+
         .options("/api/quote", cors_preflight)
         .options("/api/verify-selectors", cors_preflight)
         .options("/api/update-selectors", cors_preflight)
         .options("/api/test-parser", cors_preflight)
+        .options("/api/dji", cors_preflight)
+        .options("/api/selectors/:code_type", cors_preflight) // Add OPTIONS for new route
         .run(req, env).await
 }
 
@@ -300,13 +334,13 @@ async fn handle_quote(req: Request, ctx: RouteContext<()>)
             let html_content = html_content_result.map_err(|e| worker::Error::from(format!("Failed to fetch HTML for {}: {}", code, e)))?;
 
             match code_type {
-                CodeType::Stock => {
-                    // Use new JSON parser for Stocks
+                CodeType::Stock | CodeType::Nikkei => {
+                    // Use new JSON parser for Stocks and Nikkei
                     libhtml::parse_from_preloaded_state(&html_content, code)
                         .map_err(|e| worker::Error::from(e))
                 },
-                CodeType::Fx | CodeType::Nikkei | CodeType::Dji => {
-                    // Use old CSS selector parser for FX and Indices
+                CodeType::Fx | CodeType::Dji => {
+                    // Use old CSS selector parser for FX and DJI
                     let selectors: SelectorConfig = kv_clone.get(code_type.as_str()).json().await?
                         .unwrap_or_else(|| get_default_selectors(code_type));
                     parse_with_selectors(&html_content, code, &selectors)
@@ -446,84 +480,7 @@ async fn handle_delete_selectors(req: Request, ctx: RouteContext<()>)
 
 
 
-pub fn parse_financial_data(html_content: &str, url: String) -> FinancialData {
-    let document = Html::parse_document(html_content);
 
-    if url.contains("USDJPY=FX") {
-        let name_selector = Selector::parse("h2[class*=\"PriceBoard__name\"]").expect("Failed to parse name selector");
-        let time_selector = Selector::parse("time").expect("Failed to parse time selector");
-        let fx_price_selector = Selector::parse("div > span").expect("Failed to parse fx price selector");
-        let bid_term_selector = Selector::parse("dt[class*=\"_FxPriceBoard__term\"]").expect("Failed to parse bid term selector");
-        let dd_selector = Selector::parse("dd[class*=\"_FxPriceBoard__description\"]").expect("Failed to parse dd selector");
-        let price_span_selector = Selector::parse("span[class*=\"_FxPriceBoard__price\"]").expect("Failed to parse price span selector");
-        let dd_plain_selector = Selector::parse("dd").expect("Failed to parse dd plain selector");
-        let span_selector = Selector::parse("span").expect("Failed to parse span selector");
-        let get_text = |el: Option<scraper::ElementRef>| el.map(|e| e.text().collect::<String>());
-
-        let mut data = FinancialData {
-            name: get_text(document.select(&name_selector).next()),
-            code: Some("USDJPY=FX".to_string()),
-            update_time: get_text(document.select(&time_selector).next()),
-            current_value: None,
-            bid_value: None,
-            previous_day_change: None,
-            change_rate: None,
-        };
-
-        data.current_value = get_text(document.select(&fx_price_selector).next());
-        for dt in document.select(&bid_term_selector) {
-            if dt.text().collect::<String>().trim() == "Bid（売値）" {
-                if let Some(dl) = dt.parent().and_then(scraper::ElementRef::wrap) {
-                    data.bid_value = get_text(dl.select(&dd_selector).next().and_then(|dd| dd.select(&price_span_selector).next()));
-                    break;
-                }
-            }
-        }
-        for dt in document.select(&bid_term_selector) {
-            if dt.text().collect::<String>().trim() == "Change（始値比）" {
-                if let Some(dl) = dt.parent().and_then(scraper::ElementRef::wrap) {
-                    data.change_rate = get_text(dl.select(&dd_plain_selector).next().and_then(|dd| dd.select(&span_selector).next()));
-                    break;
-                }
-            }
-        }
-        data
-    } else {
-        let title_selector = Selector::parse("title").expect("Failed to parse title selector");
-        let title_text = document.select(&title_selector).next().map(|e| e.text().collect::<String>()).unwrap_or_default();
-        
-        let name = title_text.split('【').next().map(|s| s.trim().to_string());
-        let code = title_text.split('【').nth(1).and_then(|s| s.split('】').next()).map(|s| s.to_string());
-
-        let mut data = FinancialData {
-            name,
-            code,
-            update_time: None,
-            current_value: None,
-            bid_value: None, // Not available on stock page
-            previous_day_change: None,
-            change_rate: None,
-        };
-
-        let current_value_selector = Selector::parse(".PriceBoard__price__1V0k .StyledNumber__value__3rXW").expect("Failed to parse current value selector");
-        let previous_day_change_selector = Selector::parse(".PriceChangeLabel__primary__Y_ut .StyledNumber__value__3rXW").expect("Failed to parse previous day change selector");
-        let change_rate_selector = Selector::parse(".PriceChangeLabel__secondary__3BXI").expect("Failed to parse change rate selector");
-
-        data.current_value = document.select(&current_value_selector).next().map(|e| e.text().collect::<String>());
-        data.previous_day_change = document.select(&previous_day_change_selector).next().map(|e| e.text().collect::<String>());
-        data.change_rate = document.select(&change_rate_selector)
-            .next()
-            .map(|e| {
-                let text = e.text().collect::<String>();
-                text.replace(|c: char| c.is_whitespace(), "").trim().to_string()
-            });
-
-        let update_time_selector = Selector::parse("time").expect("Failed to parse update time selector");
-        data.update_time = document.select(&update_time_selector).next().map(|e| e.text().collect::<String>());
-
-        data
-    }
-}
 
 async fn handle_verify_selectors_get(req: Request, env: Env)
  -> Result<Response> {
@@ -658,3 +615,27 @@ pub async fn auto_update_invalid_selectors(
 
     Ok(result)
 }
+
+async fn get_dji_data() -> Result<FinancialData> {
+    let code = "^DJI";
+    let yahoo_url = format!("https://finance.yahoo.co.jp/quote/{}", code);
+    
+    // 1. URLからHTMLを取得します
+    let html_content = fetch_html(&yahoo_url).await?;
+    
+    // 2. HTMLを解析するための設定を読み込みます
+    let code_type = get_code_type(code);
+    let selectors = get_default_selectors(code_type);
+    
+    // 3. HTMLからデータを抜き出します
+    let data = parse_with_selectors(&html_content, code, &selectors)?;
+    
+    // 4. 抜き出したデータを返します
+    Ok(data)
+}
+
+
+
+
+
+

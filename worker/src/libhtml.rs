@@ -1,13 +1,10 @@
 use serde::Deserialize;
-// FinancialData構造体を親モジュール(lib.rs)からインポートします。
-// これにより、同じデータ構造を共有できます。
 use super::FinancialData;
 
-// JSONのネスト構造に合わせたstructを定義します。
-// 不要なフィールドは無視するように設定しています。
+// --- Structs for Individual Stocks ---
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct PriceBoard {
+struct StockPriceBoard {
     name: Option<String>,
     price: Option<String>,
     price_date_time: Option<String>,
@@ -18,54 +15,78 @@ struct PriceBoard {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct MainStocksPriceBoard {
-    price_board: PriceBoard,
+    price_board: StockPriceBoard,
+}
+
+// --- Structs for Domestic Indices (e.g., Nikkei) ---
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct IndexPrices {
+    name: Option<String>,
+    price: Option<String>,
+    #[serde(rename = "changePrice")]
+    change_price: Option<String>,
+    #[serde(rename = "changePriceRate")]
+    change_price_rate: Option<String>,
+    #[serde(rename = "japanUpdateTime")]
+    update_time: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct PreloadedState {
-    main_stocks_price_board: MainStocksPriceBoard,
+struct MainDomesticIndexPriceBoard {
+    index_prices: IndexPrices,
 }
 
-/// HTMLに埋め込まれた__PRELOADED_STATE__のJSONから財務データを解析します。
-///
-/// # Arguments
-/// * `html_content` - 解析するHTMLページの完全な文字列。
-/// * `code` - 処理対象の銘柄コード。
-///
-/// # Returns
-/// * `Ok(FinancialData)` - 解析が成功した場合。
-/// * `Err(String)` - 解析に失敗した場合（JSONが見つからない、パースエラーなど）。
+
+// --- Top-level State Struct ---
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct PreloadedState {
+    main_stocks_price_board: Option<MainStocksPriceBoard>,
+    main_domestic_index_price_board: Option<MainDomesticIndexPriceBoard>,
+}
+
+/// Parses financial data from the __PRELOADED_STATE__ JSON embedded in HTML.
 pub fn parse_from_preloaded_state(html_content: &str, code: &str) -> Result<FinancialData, String> {
-    // window.__PRELOADED_STATE__ を含む行を探します。
     const SCRIPT_START: &str = "window.__PRELOADED_STATE__ = ";
     let script_line = html_content
         .lines()
         .find(|line| line.trim().starts_with(SCRIPT_START));
 
     if let Some(line) = script_line {
-        // JSON部分を抽出します。
-        // 行の末尾に`;`がある可能性を考慮して取り除きます。
         let json_str = line.trim()
             .strip_prefix(SCRIPT_START)
             .and_then(|s| s.strip_suffix(';'))
             .unwrap_or_else(|| &line.trim()[SCRIPT_START.len()..]);
 
-        // JSONをパースします。
         match serde_json::from_str::<PreloadedState>(json_str) {
             Ok(state) => {
-                let board = state.main_stocks_price_board.price_board;
-                
-                // FinancialData構造体にマッピングして返します。
-                Ok(FinancialData {
-                    name: board.name,
-                    code: Some(code.to_string()),
-                    update_time: board.price_date_time,
-                    current_value: board.price,
-                    previous_day_change: board.price_change,
-                    change_rate: board.price_change_rate,
-                    bid_value: None, // このJSONには含まれていない
-                })
+                if let Some(stock_board_wrapper) = state.main_stocks_price_board {
+                    let board = stock_board_wrapper.price_board;
+                    Ok(FinancialData {
+                        name: board.name,
+                        code: Some(code.to_string()),
+                        update_time: board.price_date_time,
+                        current_value: board.price,
+                        previous_day_change: board.price_change,
+                        change_rate: board.price_change_rate,
+                        ..Default::default()
+                    })
+                } else if let Some(index_board_wrapper) = state.main_domestic_index_price_board {
+                    let prices = index_board_wrapper.index_prices;
+                    Ok(FinancialData {
+                        name: prices.name,
+                        code: Some(code.to_string()),
+                        update_time: prices.update_time,
+                        current_value: prices.price,
+                        previous_day_change: prices.change_price,
+                        change_rate: prices.change_price_rate,
+                        ..Default::default()
+                    })
+                } else {
+                    Err("No relevant price board found in __PRELOADED_STATE__".to_string())
+                }
             }
             Err(e) => Err(format!("JSON parsing error: {}", e)),
         }
