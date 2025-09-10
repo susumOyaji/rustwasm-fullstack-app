@@ -14,3 +14,8 @@ Content-Type: application/json
          "current_value_selector": ".price"
        }
      }
+
+### Manual Selector Check (Local)
+# @name manualCheck
+GET http://localhost:8787/api/manual-check
+X-Admin-Key: local-secret-key

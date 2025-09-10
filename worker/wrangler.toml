@@ -18,6 +18,8 @@ ADMIN_KEY = "secret-admin-key" # ここを任意の秘密のキーに置き換�
 [build]
 command = "cargo install -q worker-build && worker-build --release"
 
+[site]
+bucket = "../frontend/public"
 
 # curlコマンドで直接Yahoo!ファイナンスのページ内容を取得し、lib.rs内のセレクタ定義と比較します
 
