@@ -53,3 +53,10 @@ pub async fn fetch_html(url: &str) -> Result<String> {
     let request = Request::new_with_init(url, &request_init)?;
     worker::Fetch::Request(request).send().await?.text().await
 }
+
+/// Parses a string into an Option<f64>, removing commas.
+pub fn parse_f64(s: Option<String>) -> Option<f64> {
+    s.and_then(|text| {
+        text.replace(",", "").parse::<f64>().ok()
+    })
+}

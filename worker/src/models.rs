@@ -17,10 +17,10 @@ pub struct FinancialData {
     pub name: Option<String>,
     pub code: Option<String>,
     pub update_time: Option<String>,
-    pub current_value: Option<f64>,
+    pub current_value: Option<String>,
     pub bid_value: Option<String>,
-    pub previous_day_change: Option<f64>,
-    pub change_rate: Option<f64>,
+    pub previous_day_change: Option<String>,
+    pub change_rate: Option<String>,
 }
 
 /// Holds the CSS selectors used for scraping.

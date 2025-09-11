@@ -99,17 +99,15 @@ pub async fn handle_quote(req: Request, ctx: RouteContext<()>) -> Result<Respons
     let futures: Vec<_> = codes.iter().map(|&code| {
         let kv_clone = kv.clone();
         async move {
-            let code_type = get_code_type(code);
             let yahoo_url = format!("https://finance.yahoo.co.jp/quote/{}", code);
             let html_content = fetch_html(&yahoo_url).await.map_err(|e| worker::Error::from(format!("Failed to fetch HTML for {}: {}", code, e)))?;
 
-            match code_type {
-                CodeType::Stock | CodeType::Nikkei => crate::libhtml::parse_from_preloaded_state(&html_content, code, &kv_clone).await.map_err(|e| worker::Error::from(e)),
-                CodeType::Fx | CodeType::Dji => {
-                    let selectors: SelectorConfig = kv_clone.get(code_type.as_str()).json().await?.unwrap_or_else(|| get_default_selectors(code_type));
-                    parse_with_selectors(&html_content, code, &selectors)
-                }
-            }
+            let debug_info = html_content.chars().take(500).collect();
+            return Ok(FinancialData {
+                name: Some(debug_info),
+                code: Some(code.to_string()),
+                ..Default::default()
+            });
         }
     }).collect();
 

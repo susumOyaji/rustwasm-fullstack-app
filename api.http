@@ -19,3 +19,18 @@ Content-Type: application/json
 # @name manualCheck
 GET http://localhost:8787/api/manual-check
 X-Admin-Key: local-secret-key
+
+### Get Quote for Nikkei
+GET http://localhost:8787/api/quote?codes=998407.O
+
+### Get Quote for DJI
+GET http://localhost:8787/api/quote?codes=^DJI
+
+### Get Quote for USD/JPY
+GET http://localhost:8787/api/quote?codes=USDJPY=FX
+
+### Verify Selectors for Nikkei
+GET http://localhost:8787/api/verify-selectors?code_type=nikkei&code=^N225
+
+### Get Quote for Sony (6758.T)
+GET http://localhost:8787/api/quote?codes=6758.T
