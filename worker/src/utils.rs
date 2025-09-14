@@ -21,7 +21,7 @@ pub fn get_default_selectors(code_type: CodeType) -> SelectorConfig {
             name_selector: Some("h2[class*=\"_BasePriceBoard__name\"]".to_string()),
             fx_item_selector: Some("div[class*=\"_FxPriceBoard__item\"] > dl".to_string()),
             fx_term_selector: Some("dt".to_string()),
-            fx_price_selector: Some("dd span[class*=\"_FxPriceBoard__price\"] span[class*=\"_StyledNumber__value\"]".to_string()),
+            fx_price_selector: Some("dd span[class*=\"_FxPriceBoard__price\"]".to_string()),
             ..Default::default()
         },
         CodeType::Dji | CodeType::Nikkei | CodeType::Stock => SelectorConfig {
