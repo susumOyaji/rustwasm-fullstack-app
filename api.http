@@ -18,7 +18,7 @@ Content-Type: application/json
 ### Manual Selector Check (Local)
 # @name manualCheck
 GET http://localhost:8787/api/manual-check
-X-Admin-Key: local-secret-key
+X-Admin-Key: secret-admin-key
 
 ### Get Quote for Nikkei
 GET http://localhost:8787/api/quote?codes=998407.O
