@@ -1,0 +1,11 @@
+{
+  "devDependencies": {
+    "wrangler": "^4.31.0"
+  },
+  "scripts": {
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  }
+}

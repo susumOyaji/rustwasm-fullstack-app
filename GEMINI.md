@@ -8,3 +8,9 @@
 
 ## ファイル削除に関するルール
 - `worker/src/lib.rs.bak` は削除しないでください。
+
+## Wranglerのバージョンについて
+- `wrangler@4.31.0` のバージョンは変更しないでください。
+
+## wrangler.tomlの変更について
+- `wrangler.toml` を変更する際は、必ずユーザーの許可を得てください。
